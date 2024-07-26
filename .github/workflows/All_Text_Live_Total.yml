@@ -1,0 +1,81 @@
+name: All_Text_Live_Total
+
+on: 
+  workflow_dispatch:
+  # watch:
+    # types: [started]
+  schedule:
+    - cron: 40 3 * * *
+
+env:
+  TZ: Asia/Shanghai
+  FOLDER: All_Text_Live_Total
+  OUTPUT_FILE: all_live_text_total.txt
+  
+
+jobs:
+  Update:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    - name: GetTime
+      id: date
+      run: echo "::set-output name=date::$(date +'%Y-%m-%d %H:%M:%S CST')"
+
+    - name: Update
+      run: |
+        # 处理文件夹
+        # FOLDER="diy2"
+        if [ -d "$FOLDER" ]; then
+          echo "文件夹存在,无需创建文件夹"
+        else
+          echo "文件夹不存在,创建文件夹$FOLDER" 
+          mkdir -p "$FOLDER"
+        fi
+
+        # 测试直播源
+        rm -f "$FOLDER"/*.txt
+        wget -q https://raw.githubusercontent.com/mlvjfchen/TV/main/iptv_list.txt -P "$FOLDER"/
+        wget -q https://raw.githubusercontent.com/fenxp/iptv/main/live/ipv6.txt -P "$FOLDER"/
+        wget -q https://raw.githubusercontent.com/zwc456baby/iptv_alive/master/live.txt -P "$FOLDER"/
+        # wget https://raw.githubusercontent.com/nankaine/test/main/test.txt -O "$FOLDER"/test.txt
+        
+
+        # 节目源
+        # rm -f "$FOLDER"/EPG.xml && wget https://epg.112114.xyz/pp.xml -O "$FOLDER"/EPG.xml
+        echo "Auto Update IPTV in ${{ steps.date.outputs.date }}" > README.md
+
+    - name: All Text
+      run: |
+        # OUTPUT_FILE="all_live_text_total.txt"  # 指定保存结果的文件名
+        # 清空或创建结果文件
+        # > "$FOLDER"/"$OUTPUT_FILE"
+        rm -f "$FOLDER"/"$OUTPUT_FILE"
+        cat "$FOLDER"/*.txt > "$FOLDER"/"$OUTPUT_FILE"
+        sed -i '/^$/d' "$FOLDER"/"$OUTPUT_FILE"
+        sed -i 's/ //g' "$FOLDER"/"$OUTPUT_FILE"
+        sed -i '/#/d' "$FOLDER"/"$OUTPUT_FILE"
+        sed -i '/,/!d' "$FOLDER"/"$OUTPUT_FILE"
+        sed -i '/,url/d' "$FOLDER"/"$OUTPUT_FILE"
+        grep -v '^[^,]*, *$' "$FOLDER"/"$OUTPUT_FILE" > "$FOLDER"/OUTPUT_FILE_TEMP.txt
+        cat "$FOLDER"/OUTPUT_FILE_TEMP.txt > "$FOLDER"/"$OUTPUT_FILE"
+        find "$FOLDER" -type f -name "*.txt" ! -name "$OUTPUT_FILE" -delete
+        grep -v '//\[' "$FOLDER"/"$OUTPUT_FILE" > "$FOLDER"/noipv6_"$OUTPUT_FILE"
+        
+        echo "频道名字和直播链接已保存到 $OUTPUT_FILE 文件中。"
+        
+
+    - name: Clean
+      run: |
+        git config --local user.email "github-actions[bot]@users.noreply.github.com"
+        git config --local user.name "github-actions[bot]"
+        git checkout --orphan latest_branch
+        git add -A
+        git commit -am "${{ steps.date.outputs.date }}"
+        git branch -D main
+        git branch -m main
+
+    - name: Push
+      run: git push -f origin main

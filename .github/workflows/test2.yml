@@ -1,0 +1,90 @@
+name: test2
+
+on: 
+  workflow_dispatch:
+  # watch:
+    # types: [started]
+  schedule:
+   - cron: 42 3 * * *
+
+env:
+  TZ: Asia/Shanghai
+  FOLDER: M3u2Txt_dir_2
+  OUTPUT_FILE: m3u2txt.txt
+  
+
+jobs:
+  Update:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    - name: GetTime
+      id: date
+      run: echo "::set-output name=date::$(date +'%Y-%m-%d %H:%M:%S CST')"
+
+    - name: Update
+      run: |
+        # 处理文件夹
+        # FOLDER="diy2"
+        if [ -d "$FOLDER" ]; then
+          echo "文件夹存在,无需创建文件夹"
+        else
+          echo "文件夹不存在,创建文件夹$FOLDER" 
+          mkdir -p "$FOLDER"
+        fi
+        # 央视源
+        rm -f "$FOLDER"/*.m3u
+        wget -q https://raw.githubusercontent.com/balala2oo8/iptv/main/o.m3u -P "$FOLDER"/
+        wget -q https://raw.githubusercontent.com/YanG-1989/m3u/main/Gather.m3u -P "$FOLDER"/
+
+        # 整合源
+        cat "$FOLDER"/*.m3u > "$FOLDER"/IPTV.m3u
+        sed -i '/#EXTM3U/d' "$FOLDER"/IPTV.m3u
+        sed -i '1i #EXTM3U' "$FOLDER"/IPTV.m3u
+        sed -i '/^\s*$/d' "$FOLDER"/IPTV.m3u
+        sed -i 's/ //g' "$FOLDER"/IPTV.m3u #删除空格
+
+        # 节目源
+        # rm -f "$FOLDER"/EPG.xml && wget https://epg.112114.xyz/pp.xml -O "$FOLDER"/EPG.xml
+        echo "Auto Update IPTV in ${{ steps.date.outputs.date }}" > README.md
+
+    - name: m3u2txt
+      run: |
+        # FOLDER="diy2"
+        # OUTPUT_FILE="m3u2txt.txt"  # 指定保存结果的文件名
+        # 清空或创建结果文件
+        # > "$FOLDER"/"$OUTPUT_FILE"
+        truncate -s 0 "$FOLDER"/"$OUTPUT_FILE"
+        # 读取 m3u 文件
+        while IFS= read -r line
+        do
+        # 判断是否为频道名字行
+            if [[ $line == *"#EXTINF"* ]]
+            then
+                # 提取频道名字和直播连接
+                channel_name=$(echo "$line" | cut -d',' -f2)
+                live_link=$(IFS= read -r nextline && echo "$nextline")
+                # 将频道名字和直播连接保存到结果文件
+                echo "$channel_name,$live_link" >> "$FOLDER"/"$OUTPUT_FILE"
+                # echo "test" >> "$OUTPUT_FILE"
+            fi
+        done < "$FOLDER"/IPTV.m3u
+        grep -v '//\[' "$FOLDER"/"$OUTPUT_FILE" > "$FOLDER"/noipv6_"$OUTPUT_FILE"
+        find "$FOLDER" -type f -name "*.m3u" -exec rm {} \;
+        echo "频道名字和直播链接已保存到 $OUTPUT_FILE 文件中。"
+        
+
+    - name: Clean
+      run: |
+        git config --local user.email "github-actions[bot]@users.noreply.github.com"
+        git config --local user.name "github-actions[bot]"
+        git checkout --orphan latest_branch
+        git add -A
+        git commit -am "${{ steps.date.outputs.date }}"
+        git branch -D main
+        git branch -m main
+
+    - name: Push
+      run: git push -f origin main
